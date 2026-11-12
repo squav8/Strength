@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Sleep Shift Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a two-pane planner — trip inputs on the left, a nightly actogram (sleep bands on an 18:00→18:00 axis) on the right; stacks on phones. */
+:root {
+  --bg: #eceff6;
+  --surface: #ffffff;
+  --surface-2: #f5f6fa;
+  --ink: #151a2f;
+  --muted: #5a6282;
+  --line: #d7dbe8;
+  --sleep: #3d42a3;
+  --sleep-soft: #d3d5f2;
+  --sun: #d98a17;
+  --flight: #c2412d;
+  --good: #2c7a57;
+  --warn: #a9670f;
+  --focus: #3d42a3;
+  --f-display: "Bricolage Grotesque", "DM Sans", system-ui, sans-serif;
+  --f-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0f1e; --surface: #151a2e; --surface-2: #1b2138; --ink: #e8eaf4; --muted: #9ba2c0;
+    --line: #2a3152; --sleep: #8e93f2; --sleep-soft: #2c3166; --sun: #f0b14d; --flight: #f27b64;
+    --good: #5ec598; --warn: #e6b24d; --focus: #a9adff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0f1e; --surface: #151a2e; --surface-2: #1b2138; --ink: #e8eaf4; --muted: #9ba2c0;
+  --line: #2a3152; --sleep: #8e93f2; --sleep-soft: #2c3166; --sun: #f0b14d; --flight: #f27b64;
+  --good: #5ec598; --warn: #e6b24d; --focus: #a9adff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px; }
+header.top { display: grid; gap: 6px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.7rem, 3.4vw, 2.4rem); line-height: 1.1; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 68ch; margin: 0; }
+h2 { font-family: var(--f-display); font-weight: 700; font-size: 1.15rem; margin: 0; }
+h3 { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; font-weight: 700; }
+.cols { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.inputs { display: grid; gap: 16px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label, .lbl { font-size: .8rem; color: var(--muted); font-weight: 500; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+input, select, button { font: inherit; color: inherit; }
+input, select {
+  width: 100%; min-width: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; font-size: .95rem;
+}
+input[type="time"], input[type="date"] { font-family: var(--f-mono); font-size: .9rem; }
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+input.bad { border-color: var(--flight); }
+.hint { font-size: .78rem; color: var(--muted); }
+.err { font-size: .78rem; color: var(--flight); }
+.btn { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--sleep); border-color: var(--sleep); color: var(--surface); }
+.btn.ghost { background: transparent; }
+.btn.small { padding: 4px 9px; font-size: .82rem; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.flight { border: 1px solid var(--line); border-left: 3px solid var(--flight); border-radius: 8px; padding: 12px; display: grid; gap: 10px; background: var(--surface); }
+.flight-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.flight-head input { font-weight: 700; background: transparent; border-color: transparent; padding-left: 0; }
+.flight-head input:hover { border-color: var(--line); }
+.leg { display: grid; grid-template-columns: 52px 1fr 1fr; gap: 8px; align-items: center; }
+.leg .lbl { font-weight: 700; }
+.wakeby { font-family: var(--f-mono); font-size: .82rem; color: var(--ink); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
+.example { font-size: .78rem; color: var(--warn); font-weight: 600; }
+details.settings summary { cursor: pointer; font-weight: 700; font-family: var(--f-display); list-style: none; display: flex; justify-content: space-between; }
+details.settings summary::-webkit-details-marker { display: none; }
+details.settings summary::after { content: "Show"; font-family: var(--f-body); font-weight: 500; font-size: .82rem; color: var(--muted); }
+details.settings[open] summary::after { content: "Hide"; }
+details.settings[open] summary { margin-bottom: 12px; }
+.settings-grid { display: grid; gap: 12px; }
+
+/* summary */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.stat b { font-family: var(--f-mono); font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { font-size: .76rem; color: var(--muted); }
+
+/* actogram */
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: .78rem; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 9px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+.axis, .bar { position: relative; }
+.axis { height: 18px; font-family: var(--f-mono); font-size: .68rem; color: var(--muted); }
+.axis span { position: absolute; transform: translateX(-50%); top: 0; }
+.axis span:first-child { transform: none; }
+.days { display: grid; gap: 10px; }
+.day { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 10px; background: var(--surface); }
+.day.k-flight { border-left: 3px solid var(--flight); }
+.day.k-pre { border-left: 3px solid var(--sun); }
+.day.k-adjust { border-left: 3px solid var(--sleep); }
+.day-top { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 14px; align-items: center; }
+@media (max-width: 640px) { .day-top { grid-template-columns: minmax(0, 1fr) auto; } .day-top .bar-wrap { grid-column: 1 / -1; order: 3; } }
+.date { display: grid; gap: 0; min-width: 0; }
+.date b { font-family: var(--f-display); font-size: 1.02rem; }
+.date span { font-size: .76rem; color: var(--muted); overflow-wrap: anywhere; }
+.bar { height: 26px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.bar .grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.bar .ghost { position: absolute; top: 3px; bottom: 3px; border: 1.5px dashed var(--sleep); opacity: .55; border-radius: 4px; }
+.bar .sleep { position: absolute; top: 6px; bottom: 6px; background: var(--sleep); border-radius: 4px; }
+.bar .fl { position: absolute; top: 0; bottom: 0; background: var(--flight); opacity: .28; }
+.bar .fl.edge { opacity: 1; width: 2px; }
+.times { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; display: grid; gap: 1px; }
+.times .t { font-size: 1rem; font-weight: 600; white-space: nowrap; }
+.times .t small { font-size: .72rem; color: var(--muted); font-weight: 400; margin-right: 4px; font-family: var(--f-body); text-transform: uppercase; letter-spacing: .06em; }
+.times .d { font-size: .76rem; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: .74rem; font-weight: 700; border-radius: 999px; padding: 2px 9px; border: 1px solid currentColor; letter-spacing: .02em; }
+.chip.flight { color: var(--flight); }
+.chip.pre { color: var(--warn); }
+.chip.adjust { color: var(--sleep); }
+.chip.normal { color: var(--good); }
+.chip.short { color: var(--flight); background: color-mix(in srgb, var(--flight) 12%, transparent); }
+.chip.neutral { color: var(--muted); }
+.tips { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: .88rem; }
+.tips li::marker { color: var(--muted); }
+.tips b { font-weight: 700; }
+.science { display: grid; gap: 10px; font-size: .9rem; }
+.science p { margin: 0; max-width: 72ch; }
+.science ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 72ch; }
+.muted { color: var(--muted); }
+.toast { font-size: .82rem; color: var(--good); }
+.plan-head { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+.empty { color: var(--muted); padding: 12px 0; }
+textarea.copybox { width: 100%; min-height: 160px; font-family: var(--f-mono); font-size: .8rem; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+@media (prefers-reduced-motion: no-preference) { .sleep, .ghost { transition: left .25s ease, width .25s ease; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Sleep Shift Planner</h1>
+    <p class="lede">Enter your flights and your normal wake time. The planner nudges your bedtime and wake time in small steps before an early departure, protects as much sleep as it can on travel days, and eases you back to your usual rhythm afterwards.</p>
+  </header>
+
+  <div class="cols">
+    <section class="inputs" aria-label="Your details">
+      <div class="panel">
+        <h2>Your normal sleep</h2>
+        <div class="row2">
+          <div class="field"><label for="wake">Usual wake time</label><input id="wake" type="time" data-s="wake"></div>
+          <div class="field"><label for="need">Sleep you need (hours)</label><input id="need" type="number" min="6" max="10" step="0.25" data-s="need"></div>
+        </div>
+        <div class="hint" id="usualBed"></div>
+        <div class="row2">
+          <div class="field"><label for="homeTz">Home time zone</label><input id="homeTz" list="tzlist" data-s="homeTz" autocomplete="off"></div>
+          <div class="field"><label for="start">Plan starts</label><input id="start" type="date" data-s="start"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="plan-head">
+          <h2>Flights</h2>
+          <span class="example" id="exampleTag" hidden>Example trip. Replace with yours.</span>
+        </div>
+        <div id="flights" class="inputs"></div>
+        <div class="btnrow">
+          <button class="btn primary" id="addFlight" type="button">Add flight</button>
+          <button class="btn ghost" id="clearFlights" type="button">Remove all</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <details class="settings" id="settingsBox">
+          <summary>How the plan adjusts</summary>
+          <div class="settings-grid">
+            <div class="row2">
+              <div class="field"><label for="preDays">Days to prepare before early flights</label>
+                <select id="preDays" data-s="preDays"><option value="0">None</option><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="4">4 days</option><option value="5">5 days</option></select></div>
+              <div class="field"><label for="step">Shift per day</label>
+                <select id="step" data-s="step"><option value="15">15 min</option><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option></select></div>
+            </div>
+            <div class="field"><label for="speed">Adapting to a new time zone</label>
+              <select id="speed" data-s="speed">
+                <option value="gentle">Gradual: about 1 h/day earlier, 2 h/day later</option>
+                <option value="moderate">Faster: 1.5 h/day earlier, 3 h/day later</option>
+                <option value="fast">Switch to local time within a day or two</option>
+              </select></div>
+            <div class="field"><label for="strategy">Which clock to follow while away</label>
+              <select id="strategy" data-s="strategy">
+                <option value="auto">Auto: adapt for stays of 3+ days, otherwise keep home time</option>
+                <option value="local">Always adapt to local time</option>
+                <option value="home">Always keep home time</option>
+              </select></div>
+            <div class="field"><label for="clock">Clock format</label>
+              <select id="clock" data-s="clock"><option value="24">24-hour</option><option value="12">12-hour</option></select></div>
+            <p class="hint">Smaller daily shifts are easier on your body clock. Shifts of 15–30 minutes a day are hard to notice; most people can move their clock about an hour earlier, or one to two hours later, per day.</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Your sleep plan">
+      <div class="plan-head">
+        <h2>Your nights</h2>
+        <div class="btnrow">
+          <button class="btn small" id="copyPlan" type="button">Copy plan as text</button>
+          <span class="toast" id="toast" aria-live="polite"></span>
+        </div>
+      </div>
+      <textarea class="copybox" id="copyFallback" hidden readonly aria-label="Plan text"></textarea>
+      <div class="stats" id="stats"></div>
+      <div class="legend">
+        <span><i style="background:var(--sleep)"></i>Planned sleep</span>
+        <span><i style="border:1.5px dashed var(--sleep);opacity:.7"></i>Your usual sleep (local time)</span>
+        <span><i style="background:var(--flight);opacity:.5"></i>Flight</span>
+      </div>
+      <div class="day-top" aria-hidden="true" style="margin-bottom:-6px"><span></span><div class="axis" id="axis"></div><span style="width:120px"></span></div>
+      <div class="days" id="days"></div>
+    </section>
+  </div>
+
+  <section class="panel science" aria-label="Why the plan looks like this">
+    <h2>Why it works this way</h2>
+    <ul>
+      <li><b>Keep your times regular.</b> Matthew Walker's first rule in <i>Why We Sleep</i> is to go to bed and wake at the same times every day. The plan only moves your times when a flight forces it, and moves them in small daily steps.</li>
+      <li><b>Prepare before an early flight.</b> Moving your bedtime earlier in steps over the days before an early departure lets you keep more of your sleep on the night that matters. Bright light soon after waking helps your clock move earlier; dim light in the evening helps too.</li>
+      <li><b>You can't go to sleep much earlier on demand.</b> In the hour or two before your usual bedtime your body is at its most alert, so the plan won't schedule bedtime more than about an hour earlier than your body is used to. If an early flight still cuts the night short, it says so and suggests a nap or plane sleep.</li>
+      <li><b>Short naps, early in the day.</b> A nap of 20–30 minutes before about 3 pm can top you up without hurting the next night. Late or long naps reduce your sleep pressure at bedtime.</li>
+      <li><b>Caffeine lasts.</b> Caffeine's half-life is roughly 5–6 hours, so an afternoon coffee is still partly active at bedtime. Each day shows a caffeine cut-off about 8 hours before bed.</li>
+      <li><b>Alcohol fragments sleep.</b> It helps you nod off but breaks up the second half of the night and suppresses REM sleep. Skip the airport and in-flight drinks if you want the night to count.</li>
+      <li><b>Short trips can stay on home time.</b> For stays under about three days, staying on home time often disrupts you less than adapting and then adapting back.</li>
+    </ul>
+    <p class="hint">This planner gives general guidance, not medical advice. If you have a sleep disorder or take medication that affects sleep, check with your doctor.</p>
+  </section>
+</div>
+<datalist id="tzlist"></datalist>
+
+<script>
+(() => {
+const MIN = 60000;
+const KEY = "sleep-shift-planner-v1";
+const SPEEDS = { gentle: { A: 60, D: 120 }, moderate: { A: 90, D: 180 }, fast: { A: 240, D: 360 } };
+
+/* ---------- time zone helpers ---------- */
+const dtfCache = {};
+function dtf(tz) {
+  if (!dtfCache[tz]) dtfCache[tz] = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", weekday: "short" });
+  return dtfCache[tz];
+}
+function validTz(tz) { if (!tz) return false; try { dtf(tz); return true; } catch (e) { return false; } }
+function parts(ms, tz) {
+  const o = {};
+  for (const p of dtf(tz).formatToParts(new Date(ms))) o[p.type] = p.value;
+  return { y: +o.year, m: +o.month, d: +o.day, h: (+o.hour) % 24, mi: +o.minute, wd: o.weekday };
+}
+function offsetMin(ms, tz) { const p = parts(ms, tz); return (Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi) - Math.floor(ms / MIN) * MIN) / MIN; }
+// local date "YYYY-MM-DD" + "HH:MM" in tz -> minutes since epoch (UTC)
+function zoned(dateStr, timeStr, tz) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const [hh, mm] = timeStr.split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, hh, mm);
+  let t = guess - offsetMin(guess, tz) * MIN;
+  t = guess - offsetMin(t, tz) * MIN;
+  return t / MIN;
+}
+function addDays(dateStr, n) { const [y, m, d] = dateStr.split("-").map(Number); const t = new Date(Date.UTC(y, m - 1, d + n)); return t.toISOString().slice(0, 10); }
+function todayIn(tz) { const p = parts(Date.now(), tz); return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`; }
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function local(min, tz) { return parts(min * MIN, tz); }
+function fmtT(p) {
+  if (state.s.clock === "12") { const h = p.h % 12 || 12; return `${h}:${String(p.mi).padStart(2, "0")}${p.h < 12 ? "am" : "pm"}`; }
+  return `${String(p.h).padStart(2, "0")}:${String(p.mi).padStart(2, "0")}`;
+}
+function fmtTime(min, tz) { return fmtT(local(min, tz)); }
+function fmtDay(min, tz) { const p = local(min, tz); return `${p.wd} ${p.d} ${MONTHS[p.m - 1]}`; }
+function fmtDur(m) { m = Math.round(m); const s = m < 0 ? "−" : ""; m = Math.abs(m); const h = Math.floor(m / 60), r = m % 60; return h ? `${s}${h}h${r ? " " + String(r).padStart(2, "0") + "m" : ""}` : `${s}${r}m`; }
+function tzCity(tz) { const s = tz.split("/").pop().replace(/_/g, " "); return s; }
+function tzOff(min, tz) { const o = offsetMin(min * MIN, tz); const s = o < 0 ? "−" : "+"; const a = Math.abs(o); return `UTC${s}${Math.floor(a / 60)}${a % 60 ? ":" + String(a % 60).padStart(2, "0") : ""}`; }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* ---------- state ---------- */
+const browserTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch (e) { return "UTC"; } })();
+const prefers12 = (() => { try { return new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12 === true; } catch (e) { return false; } })();
+let uid = 1;
+function exampleState() {
+  const today = todayIn(browserTz);
+  return {
+    example: true,
+    s: { wake: "07:00", need: 8, homeTz: browserTz, start: today, preDays: 3, step: 30, speed: "gentle", strategy: "auto", clock: prefers12 ? "12" : "24" },
+    flights: [
+      { id: uid++, label: "Early flight out", depDate: addDays(today, 3), depTime: "06:15", depTz: browserTz, arrDate: addDays(today, 3), arrTime: "08:05", arrTz: browserTz, buffer: 165 },
+      { id: uid++, label: "Evening flight home", depDate: addDays(today, 5), depTime: "20:10", depTz: browserTz, arrDate: addDays(today, 5), arrTime: "22:25", arrTz: browserTz, buffer: 180 },
+    ],
+  };
+}
+let state;
+try { const raw = localStorage.getItem(KEY); if (raw) { state = JSON.parse(raw); uid = Math.max(1, ...state.flights.map(f => f.id + 1)); } } catch (e) { state = null; }
+if (!state || !state.s || !Array.isArray(state.flights)) state = exampleState();
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+/* ---------- planner ---------- */
+function buildPlan() {
+  const s = state.s;
+  if (!validTz(s.homeTz) || !/^\d\d:\d\d$/.test(s.wake || "") || !s.start) return { error: "Check your usual wake time, home time zone and start date." };
+  const need = Math.round(clamp(+s.need || 8, 4, 12) * 60);
+  const S = +s.step, K = +s.preDays;
+  const { A, D } = SPEEDS[s.speed] || SPEEDS.gentle;
+
+  const fl = [];
+  for (const f of state.flights) {
+    f._err = "";
+    if (!f.depDate || !f.depTime || !f.arrDate || !f.arrTime) { f._err = "Fill in both dates and times."; continue; }
+    if (!validTz(f.depTz) || !validTz(f.arrTz)) { f._err = "Pick a time zone from the list, e.g. Europe/London."; continue; }
+    const dep = zoned(f.depDate, f.depTime, f.depTz), arr = zoned(f.arrDate, f.arrTime, f.arrTz);
+    if (!(arr > dep)) { f._err = "Arrival is before departure. Check the arrival date and time zone."; continue; }
+    if (arr - dep > 30 * 60) { f._err = "This flight is over 30 hours. Check the dates."; continue; }
+    fl.push({ ...f, dep, arr, wakeBy: dep - (+f.buffer || 0) });
+  }
+  fl.sort((a, b) => a.dep - b.dep);
+
+  // where you are, and which clock you follow, over time
+  const segs = [{ tz: s.homeTz, from: -Infinity, to: fl.length ? fl[0].dep : Infinity }];
+  fl.forEach((f, i) => segs.push({ tz: f.arrTz, from: f.arr, to: i + 1 < fl.length ? fl[i + 1].dep : Infinity }));
+  let prevA = s.homeTz;
+  segs.forEach((g, i) => {
+    let a;
+    if (s.strategy === "home") a = s.homeTz;
+    else if (s.strategy === "local" || i === 0) a = g.tz;
+    else a = (g.to - g.from >= 72 * 60 || g.tz === s.homeTz) ? g.tz : prevA;
+    g.anchor = a; prevA = a;
+  });
+  const segAt = t => { let g = segs[0]; for (const x of segs) if (x.from <= t) g = x; return g; };
+
+  const startMin = zoned(s.start, "00:00", s.homeTz);
+  const future = fl.filter(f => f.arr > startMin);
+  const N = future.length ? clamp(Math.ceil((future[future.length - 1].arr - startMin) / 1440) + 4, 5, 21) : 7;
+
+  // target wake (usual wake in the clock you're following), unwrapped across zones
+  const T = [];
+  for (let n = 0; n < N; n++) {
+    const date = addDays(s.start, n);
+    let tz = n === 0 ? segAt(zoned(date, s.wake, s.homeTz)).anchor : segAt(T[n - 1] + 1440).anchor;
+    let raw = zoned(date, s.wake, tz);
+    const tz2 = segAt(raw).anchor;
+    if (tz2 !== tz) raw = zoned(date, s.wake, tz2);
+    if (n === 0) T.push(raw);
+    else { let d = raw - T[n - 1] - 1440; while (d > 900) d -= 1440; while (d <= -540) d += 1440; T.push(T[n - 1] + 1440 + d); }
+  }
+  const ref = n => T[0] + n * 1440;
+  const t = T.map((x, n) => x - ref(n));
+
+  // hard limits from early departures
+  const cap = Array(N).fill(Infinity), capFlight = Array(N).fill(null);
+  for (const f of fl) {
+    const n = T.findIndex(x => x > f.wakeBy);
+    if (n < 0) continue;
+    if (T[n] - f.wakeBy < 600 && f.wakeBy - ref(n) < cap[n]) { cap[n] = f.wakeBy - ref(n); capFlight[n] = f; }
+  }
+
+  const nights = [];
+  let pPrev = t[0];
+  for (let n = 0; n < N; n++) {
+    const cand = pPrev + clamp(t[n] - pPrev, -A, D);
+    let p = cand, kind = "normal", forced = false, preFor = null;
+    let pre = Infinity;
+    for (let k = n + 1; k <= Math.min(N - 1, n + K); k++) if (isFinite(cap[k]) && cap[k] + (k - n) * S < pre) { pre = cap[k] + (k - n) * S; preFor = capFlight[k]; }
+    if (pre < p) { p = Math.min(cand, Math.max(pre, pPrev - S)); if (p < cand - 1) kind = "pre"; }
+    if (cap[n] < p) { forced = cap[n] < pPrev - S - 5; p = cap[n]; }
+    if (capFlight[n]) kind = "flight";
+
+    let wake = ref(n) + p;
+    let bed = wake - need;
+    const notes = { short: false, landing: null, inflight: null };
+    const earliest = ref(n) + pPrev - need - 60;
+    if (bed < earliest) { bed = earliest; notes.short = true; }
+    // overnight flight: the night happens on the plane
+    const red = fl.find(f => Math.min(f.arr, wake) - Math.max(f.dep, bed) > 60);
+    if (red) {
+      bed = Math.max(red.dep + 45, earliest);
+      if (red.arr - 30 < wake) { wake = red.arr - 30; p = wake - ref(n); }
+      notes.inflight = { f: red, ov: Math.max(0, wake - bed) };
+      notes.short = wake - bed < need - 20;
+      kind = "flight"; forced = true;
+    } else {
+      for (const f of fl) {
+        if (f.arr + 45 > bed && f.arr < wake - 90) {
+          bed = f.arr + 45; notes.landing = f;
+          const later = Math.min(bed + need, ref(n) + t[n]);
+          if (later > wake && !capFlight[n]) { wake = later; p = wake - ref(n); }
+        }
+      }
+    }
+    nights.push({ n, wake, bed, p, t: t[n], kind, forced, preFor, capFlight: capFlight[n], notes, sleep: wake - bed });
+    pPrev = forced ? pPrev : p;
+  }
+
+  // annotate days
+  nights.forEach((x, i) => {
+    x.tz = x.notes.inflight ? x.notes.inflight.f.arrTz : segAt(x.wake).tz;
+    x.anchor = segAt(x.wake).anchor;
+    const nx = nights[i + 1];
+    x.dir = nx ? Math.sign(Math.round((nx.p - x.p) / 10)) : 0;
+    x.nextBed = nx ? nx.bed : x.bed + 1440;
+    x.dev = x.p - x.t;
+    if (x.kind === "normal" && Math.abs(x.dev) > 20) x.kind = "adjust";
+    x.dayFlights = fl.filter(f => f.dep >= x.wake - 600 && f.dep < (nx ? nx.wake - 600 : x.wake + 840));
+    if (x.capFlight && !x.dayFlights.includes(x.capFlight)) x.dayFlights.unshift(x.capFlight);
+  });
+  return { nights, need, fl, usualWake: s.wake };
+}
+
+/* ---------- inputs ---------- */
+const $ = id => document.getElementById(id);
+function fillTzList() {
+  let zones = [];
+  try { zones = Intl.supportedValuesOf("timeZone"); } catch (e) {}
+  if (!zones.length) zones = ["UTC","Europe/London","Europe/Paris","Europe/Berlin","Europe/Istanbul","Asia/Dubai","Asia/Kolkata","Asia/Singapore","Asia/Tokyo","Australia/Sydney","Pacific/Auckland","America/New_York","America/Chicago","America/Denver","America/Los_Angeles","America/Sao_Paulo"];
+  $("tzlist").innerHTML = zones.map(z => `<option value="${z}">`).join("");
+}
+function bindSettings() {
+  document.querySelectorAll("[data-s]").forEach(el => {
+    const k = el.dataset.s;
+    el.value = state.s[k];
+    el.addEventListener("input", () => {
+      state.s[k] = el.type === "number" ? el.value : el.value;
+      if (k === "homeTz") el.classList.toggle("bad", !validTz(el.value));
+      changed(k === "clock");
+    });
+  });
+}
+const BUFFERS = [60, 90, 120, 150, 165, 180, 210, 240, 300];
+function flightCard(f, i) {
+  const opts = BUFFERS.map(b => `<option value="${b}" ${+f.buffer === b ? "selected" : ""}>${fmtDur(b)} before departure</option>`).join("");
+  return `<div class="flight" data-id="${f.id}">
+    <div class="flight-head"><input aria-label="Flight name" data-f="label" value="${esc(f.label || "")}" placeholder="Flight ${i + 1}"><button class="btn small ghost" type="button" data-del="${f.id}">Remove</button></div>
+    <div class="leg"><span class="lbl">Depart</span><input type="date" aria-label="Departure date" data-f="depDate" value="${f.depDate}"><input type="time" aria-label="Departure time" data-f="depTime" value="${f.depTime}"></div>
+    <div class="field"><input list="tzlist" aria-label="Departure time zone" data-f="depTz" value="${esc(f.depTz)}" autocomplete="off" class="${validTz(f.depTz) ? "" : "bad"}"></div>
+    <div class="leg"><span class="lbl">Arrive</span><input type="date" aria-label="Arrival date" data-f="arrDate" value="${f.arrDate}"><input type="time" aria-label="Arrival time" data-f="arrTime" value="${f.arrTime}"></div>
+    <div class="field"><input list="tzlist" aria-label="Arrival time zone" data-f="arrTz" value="${esc(f.arrTz)}" autocomplete="off" class="${validTz(f.arrTz) ? "" : "bad"}"></div>
+    <div class="field"><label for="buf${f.id}">Wake up</label><select id="buf${f.id}" data-f="buffer">${opts}</select>
+      <span class="hint">Time to get ready, travel to the airport, and check in.</span></div>
+    <div class="wakeby" data-wakeby></div>
+    <div class="err" data-err></div>
+  </div>`;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function renderFlights() {
+  $("flights").innerHTML = state.flights.length ? state.flights.map(flightCard).join("") : `<p class="empty">No flights yet. Add one to see how your nights change.</p>`;
+  $("exampleTag").hidden = !state.example;
+}
+$("flights").addEventListener("input", e => {
+  const el = e.target, card = el.closest(".flight"); if (!card || !el.dataset.f) return;
+  const f = state.flights.find(x => x.id === +card.dataset.id); if (!f) return;
+  f[el.dataset.f] = el.dataset.f === "buffer" ? +el.value : el.value;
+  if (el.dataset.f.endsWith("Tz")) el.classList.toggle("bad", !validTz(el.value));
+  // keep arrival date sensible when departure date moves
+  if (el.dataset.f === "depDate" && f.arrDate < el.value) { f.arrDate = el.value; card.querySelector('[data-f="arrDate"]').value = el.value; }
+  state.example = false; $("exampleTag").hidden = true;
+  changed();
+});
+$("flights").addEventListener("click", e => {
+  const id = e.target.dataset && e.target.dataset.del; if (!id) return;
+  state.flights = state.flights.filter(f => f.id !== +id); state.example = false;
+  renderFlights(); changed();
+});
+$("addFlight").addEventListener("click", () => {
+  const last = state.flights[state.flights.length - 1];
+  const base = last ? addDays(last.arrDate, 2) : addDays(state.s.start, 1);
+  const tz = last ? last.arrTz : state.s.homeTz;
+  state.flights.push({ id: uid++, label: "", depDate: base, depTime: "07:00", depTz: tz, arrDate: base, arrTime: "10:00", arrTz: tz === state.s.homeTz ? tz : state.s.homeTz, buffer: 180 });
+  state.example = false; renderFlights(); changed();
+  const cards = $("flights").querySelectorAll(".flight"); const c = cards[cards.length - 1]; if (c) c.querySelector("input").focus();
+});
+$("clearFlights").addEventListener("click", () => { state.flights = []; state.example = false; renderFlights(); changed(); });
+
+/* ---------- output ---------- */
+let plan = null;
+function changed(rerenderFlights) {
+  save();
+  if (rerenderFlights) renderFlights();
+  plan = buildPlan();
+  renderPlan();
+}
+function pos(min, w0) { return clamp((min - w0) / 14.4, 0, 100); }
+function renderAxis() {
+  const hrs = [18, 21, 0, 3, 6, 9, 12, 15];
+  $("axis").innerHTML = hrs.map((h, i) => `<span style="left:${(i * 3 / 24) * 100}%">${state.s.clock === "12" ? (h % 12 || 12) + (h < 12 ? "a" : "p") : String(h).padStart(2, "0")}</span>`).join("");
+}
+function tipsFor(x, i) {
+  const tips = [];
+  const tz = x.tz, need = plan.need;
+  const f = x.capFlight;
+  if (f) {
+    tips.push(`Wake by <b>${fmtTime(f.wakeBy, f.depTz)}</b> for the ${fmtTime(f.dep, f.depTz)} departure${f.label ? ` (${esc(f.label)})` : ""}.`);
+    tips.push(`The night before: pack, lay out clothes and check in online so you can go straight to bed at ${fmtTime(x.bed, tz)}.`);
+  }
+  if (x.notes.inflight) {
+    const r = x.notes.inflight.f;
+    tips.push(`Overnight flight. Try to sleep from about ${fmtTime(x.bed, r.depTz)} (${tzCity(r.depTz)} time) until the descent: eye mask, earplugs, skip the meal service and alcohol. Expect about ${fmtDur(x.sleep)}.`);
+    tips.push(`After landing, get daylight and stay up. If you're struggling, nap up to 90 min before about 2 pm local, then go to bed at the planned time tonight.`);
+  } else if (x.notes.short) {
+    tips.push(`Your body won't fall asleep much earlier than this, so tonight is short by <b>${fmtDur(need - x.sleep)}</b>. Sleep on the plane if you can (eye mask, earplugs), or nap 20–30 min before 3 pm.`);
+    tips.push(`Don't try to "catch up" by sleeping in late tomorrow. Go to bed at the planned time instead.`);
+  } else if (x.sleep < need - 20) {
+    tips.push(`About ${fmtDur(need - x.sleep)} short. A 20–30 min nap before 3 pm will help.`);
+  }
+  if (x.notes.landing) tips.push(`You land at ${fmtTime(x.notes.landing.arr, x.notes.landing.arrTz)}. Keep the cabin and hotel room dim and skip screens so you can sleep soon after.`);
+  if (x.kind === "pre" && x.preFor) tips.push(`Preparing for the ${fmtDay(x.preFor.dep, x.preFor.depTz)} ${fmtTime(x.preFor.dep, x.preFor.depTz)} flight: bed and wake ${fmtDur(Math.abs(x.dev))} earlier than usual.`);
+  if (x.forced || x.notes.inflight) {}
+  else if (x.dir < 0) tips.push(`Shifting earlier: get bright light (outdoors if possible) within an hour of waking, and dim the lights after about ${fmtTime(x.nextBed - 120, tz)}.`);
+  else if (x.dir > 0 && i > 0) tips.push(`Shifting later: get light in the late afternoon and evening, and avoid bright light before ${fmtTime(x.wake + 120, tz)}.`);
+  if (x.kind === "adjust" && x.anchor !== tz) tips.push(`Staying on ${tzCity(x.anchor)} time for this short stay, so your times look unusual locally.`);
+  else if (x.kind === "adjust" && !f) tips.push(`Still adjusting. The plan moves you toward your usual ${fmtT({ h: +plan.usualWake.slice(0, 2), mi: +plan.usualWake.slice(3) })} wake-up a little each day.`);
+  if (x.kind === "normal" && !f && !x.notes.landing) tips.push(`Your usual times. Keeping them steady is the most useful thing you can do for your sleep.`);
+  tips.push(`No caffeine after <b>${fmtTime(x.nextBed - 480, tz)}</b>.`);
+  return tips;
+}
+function chipsFor(x) {
+  const c = [];
+  if (x.kind === "flight") c.push(`<span class="chip flight">Flight day</span>`);
+  else if (x.dayFlights.length) c.push(`<span class="chip flight">Flight</span>`);
+  if (x.kind === "pre") c.push(`<span class="chip pre">Preparing</span>`);
+  if (x.kind === "adjust") c.push(`<span class="chip adjust">Adjusting</span>`);
+  if (x.kind === "normal" && !x.dayFlights.length) c.push(`<span class="chip normal">Usual times</span>`);
+  if (x.notes.short || x.sleep < plan.need - 20) c.push(`<span class="chip short">${fmtDur(x.sleep)} in bed</span>`);
+  if (Math.abs(x.dev) > 5) c.push(`<span class="chip neutral">${fmtDur(Math.abs(x.dev))} ${x.dev < 0 ? "earlier" : "later"} than usual</span>`);
+  return c.join("");
+}
+function renderPlan() {
+  renderAxis();
+  const need = Math.round(clamp(+state.s.need || 8, 4, 12) * 60);
+  const ub = (() => { const [h, m] = (state.s.wake || "07:00").split(":").map(Number); let t = h * 60 + m - need; t = ((t % 1440) + 1440) % 1440; return fmtT({ h: Math.floor(t / 60), mi: t % 60 }); })();
+  $("usualBed").textContent = `So your usual bedtime is about ${ub}.`;
+  for (const f of state.flights) {
+    const card = $("flights").querySelector(`.flight[data-id="${f.id}"]`); if (!card) continue;
+    card.querySelector("[data-err]").textContent = f._err || "";
+    let wb = "";
+    if (!f._err && validTz(f.depTz) && f.depDate && f.depTime) { const dep = zoned(f.depDate, f.depTime, f.depTz); wb = `Wake by ${fmtTime(dep - f.buffer, f.depTz)} · ${fmtDay(dep - f.buffer, f.depTz)}`; }
+    const w = card.querySelector("[data-wakeby]"); w.textContent = wb; w.hidden = !wb;
+  }
+  if (plan.error) { $("days").innerHTML = `<p class="err">${plan.error}</p>`; $("stats").innerHTML = ""; return; }
+  const ns = plan.nights;
+  const shortest = ns.reduce((a, b) => (b.sleep < a.sleep ? b : a));
+  const debt = ns.reduce((a, b) => a + Math.max(0, plan.need - b.sleep), 0);
+  const earliest = ns.reduce((a, b) => (b.p < a.p ? b : a));
+  let maxShift = 0; ns.forEach((x, i) => { if (i) maxShift = Math.max(maxShift, Math.abs(x.p - ns[i - 1].p)); });
+  const full = ns.filter(x => x.sleep >= plan.need - 15).length;
+  $("stats").innerHTML = [
+    [`${full}/${ns.length}`, "nights with full sleep"],
+    [fmtDur(shortest.sleep), `shortest night (${fmtDay(shortest.wake, shortest.tz)})`],
+    [debt ? fmtDur(debt) : "0m", "total sleep lost"],
+    [fmtTime(earliest.wake, earliest.tz), `earliest wake-up (${fmtDay(earliest.wake, earliest.tz)})`],
+  ].map(([b, s]) => `<div class="stat"><b>${b}</b><span>${s}</span></div>`).join("");
+
+  $("days").innerHTML = ns.map((x, i) => {
+    const tz = x.tz;
+    const lp = local(x.wake, tz);
+    const w0 = x.wake - ((((lp.h * 60 + lp.mi) - 1080) % 1440) + 1440) % 1440;
+    const grid = [0, 3, 6, 9, 12, 15, 18, 21].map(h => `<span class="grid" style="left:${(h / 24) * 100}%"></span>`).join("");
+    const gT = ns[i].t + (x.wake - x.p);
+    const ghost = `<span class="ghost" style="left:${pos(gT - plan.need, w0)}%;width:${pos(gT, w0) - pos(gT - plan.need, w0)}%"></span>`;
+    const sleep = `<span class="sleep" style="left:${pos(x.bed, w0)}%;width:${pos(x.wake, w0) - pos(x.bed, w0)}%"></span>`;
+    const fls = plan.fl.filter(f => f.arr > w0 && f.dep < w0 + 1440).map(f => {
+      const a = pos(f.dep, w0), b = pos(f.arr, w0);
+      return `<span class="fl" style="left:${a}%;width:${Math.max(b - a, 0.6)}%" title="Flight ${fmtTime(f.dep, f.depTz)}–${fmtTime(f.arr, f.arrTz)}"></span>`;
+    }).join("");
+    const fl = x.dayFlights.map(f => `${f.label ? esc(f.label) + ": " : ""}${fmtTime(f.dep, f.depTz)} ${tzCity(f.depTz)} → ${fmtTime(f.arr, f.arrTz)} ${tzCity(f.arrTz)}`).join("<br>");
+    return `<article class="day k-${x.kind}">
+      <div class="day-top">
+        <div class="date"><b>${fmtDay(x.wake, tz)}</b><span>${tzCity(tz)} · ${tzOff(x.wake, tz)}</span></div>
+        <div class="bar-wrap"><div class="bar" role="img" aria-label="Sleep ${fmtTime(x.bed, tz)} to ${fmtTime(x.wake, tz)}">${grid}${ghost}${fls}${sleep}</div></div>
+        <div class="times">
+          <span class="t"><small>Bed</small>${fmtTime(x.bed, tz)}</span>
+          <span class="t"><small>Wake</small>${fmtTime(x.wake, tz)}</span>
+          <span class="d">${fmtDur(x.sleep)} sleep</span>
+        </div>
+      </div>
+      <div class="chips">${chipsFor(x)}</div>
+      ${fl ? `<div class="hint">✈ ${fl}</div>` : ""}
+      <ul class="tips">${tipsFor(x, i).map(t => `<li>${t}</li>`).join("")}</ul>
+    </article>`;
+  }).join("");
+}
+function planText() {
+  if (!plan || plan.error) return "";
+  return "Sleep plan\n" + plan.nights.map(x => {
+    const f = x.capFlight ? `  ✈ wake by ${fmtTime(x.capFlight.wakeBy, x.capFlight.depTz)} for ${fmtTime(x.capFlight.dep, x.capFlight.depTz)} flight` : "";
+    return `${fmtDay(x.wake, x.tz)} (${tzCity(x.tz)}): bed ${fmtTime(x.bed, x.tz)} → wake ${fmtTime(x.wake, x.tz)} · ${fmtDur(x.sleep)}${f}`;
+  }).join("\n");
+}
+$("copyPlan").addEventListener("click", () => {
+  const txt = planText();
+  const done = () => { $("toast").textContent = "Copied"; setTimeout(() => ($("toast").textContent = ""), 2000); };
+  const fallback = () => { const ta = $("copyFallback"); ta.value = txt; ta.hidden = false; ta.focus(); ta.select(); $("toast").textContent = "Select and copy the text below"; };
+  try { navigator.clipboard.writeText(txt).then(done, fallback); } catch (e) { fallback(); }
+});
+
+fillTzList();
+bindSettings();
+$("homeTz").classList.toggle("bad", !validTz(state.s.homeTz));
+renderFlights();
+changed();
+window.__plan = () => plan;
+})();
+</script>
+</body>
+</html>
