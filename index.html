@@ -83,6 +83,14 @@ input.bad { border-color: var(--flight); }
 .flight-head input:hover { border-color: var(--line); }
 .leg { display: grid; grid-template-columns: 52px 1fr 1fr; gap: 8px; align-items: center; }
 .leg .lbl { font-weight: 700; }
+.lookup { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) auto; gap: 8px; align-items: end; }
+.lookup input[data-f="flightNo"] { font-family: var(--f-mono); text-transform: uppercase; }
+.lookup-status { font-size: .8rem; }
+.lookup-status.ok { color: var(--good); }
+.lookup-status.est { color: var(--warn); }
+.lookup-status.bad { color: var(--flight); }
+.lookup-status.busy { color: var(--muted); }
+.or { font-size: .74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .wakeby { font-family: var(--f-mono); font-size: .82rem; color: var(--ink); background: var(--surface-2); border-radius: 6px; padding: 6px 8px; }
 .example { font-size: .78rem; color: var(--warn); font-weight: 600; }
 details.settings summary { cursor: pointer; font-weight: 700; font-family: var(--f-display); list-style: none; display: flex; justify-content: space-between; }
@@ -205,6 +213,9 @@ textarea.copybox { width: 100%; min-height: 160px; font-family: var(--f-mono); f
                 <option value="local">Always adapt to local time</option>
                 <option value="home">Always keep home time</option>
               </select></div>
+            <div class="field" id="apiKeyBox" hidden><label for="apiKey">Flight lookup key (AeroDataBox)</label>
+              <input id="apiKey" type="password" data-s="apiKey" autocomplete="off" placeholder="Paste your RapidAPI key">
+              <span class="hint">Flight-number lookups use AeroDataBox's live schedules. Get a free key at rapidapi.com (search "AeroDataBox", choose the Basic plan). The key stays in this browser.</span></div>
             <div class="field"><label for="clock">Clock format</label>
               <select id="clock" data-s="clock"><option value="24">24-hour</option><option value="12">12-hour</option></select></div>
             <p class="hint">Smaller daily shifts are easier on your body clock. Shifts of 15–30 minutes a day are hard to notice; most people can move their clock about an hour earlier, or one to two hours later, per day.</p>
@@ -434,7 +445,7 @@ function fillTzList() {
 function bindSettings() {
   document.querySelectorAll("[data-s]").forEach(el => {
     const k = el.dataset.s;
-    el.value = state.s[k];
+    el.value = state.s[k] ?? "";
     el.addEventListener("input", () => {
       state.s[k] = el.type === "number" ? el.value : el.value;
       if (k === "homeTz") el.classList.toggle("bad", !validTz(el.value));
@@ -447,7 +458,14 @@ function flightCard(f, i) {
   const opts = BUFFERS.map(b => `<option value="${b}" ${+f.buffer === b ? "selected" : ""}>${fmtDur(b)} before departure</option>`).join("");
   return `<div class="flight" data-id="${f.id}">
     <div class="flight-head"><input aria-label="Flight name" data-f="label" value="${esc(f.label || "")}" placeholder="Flight ${i + 1}"><button class="btn small ghost" type="button" data-del="${f.id}">Remove</button></div>
-    <div class="leg"><span class="lbl">Depart</span><input type="date" aria-label="Departure date" data-f="depDate" value="${f.depDate}"><input type="time" aria-label="Departure time" data-f="depTime" value="${f.depTime}"></div>
+    <div class="lookup">
+      <div class="field"><label for="fn${f.id}">Flight number</label><input id="fn${f.id}" data-f="flightNo" value="${esc(f.flightNo || "")}" placeholder="e.g. BA117" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="fd${f.id}">Departure date</label><input id="fd${f.id}" type="date" data-f="depDate" value="${f.depDate}"></div>
+      <button class="btn" type="button" data-lookup="${f.id}">Look up</button>
+    </div>
+    <div class="lookup-status ${f._lk ? f._lk.cls : ""}" data-lkstatus aria-live="polite">${f._lk ? esc(f._lk.msg) : ""}</div>
+    <div class="or">Times and time zones</div>
+    <div class="leg"><span class="lbl">Depart</span><input type="date" aria-label="Departure date" data-f="depDate" data-mirror value="${f.depDate}"><input type="time" aria-label="Departure time" data-f="depTime" value="${f.depTime}"></div>
     <div class="field"><input list="tzlist" aria-label="Departure time zone" data-f="depTz" value="${esc(f.depTz)}" autocomplete="off" class="${validTz(f.depTz) ? "" : "bad"}"></div>
     <div class="leg"><span class="lbl">Arrive</span><input type="date" aria-label="Arrival date" data-f="arrDate" value="${f.arrDate}"><input type="time" aria-label="Arrival time" data-f="arrTime" value="${f.arrTime}"></div>
     <div class="field"><input list="tzlist" aria-label="Arrival time zone" data-f="arrTz" value="${esc(f.arrTz)}" autocomplete="off" class="${validTz(f.arrTz) ? "" : "bad"}"></div>
@@ -468,11 +486,18 @@ $("flights").addEventListener("input", e => {
   f[el.dataset.f] = el.dataset.f === "buffer" ? +el.value : el.value;
   if (el.dataset.f.endsWith("Tz")) el.classList.toggle("bad", !validTz(el.value));
   // keep arrival date sensible when departure date moves
-  if (el.dataset.f === "depDate" && f.arrDate < el.value) { f.arrDate = el.value; card.querySelector('[data-f="arrDate"]').value = el.value; }
+  if (el.dataset.f === "depDate") {
+    card.querySelectorAll('[data-f="depDate"]').forEach(x => { if (x !== el) x.value = el.value; });
+    if (f.arrDate < el.value) { f.arrDate = el.value; card.querySelector('[data-f="arrDate"]').value = el.value; }
+  }
   state.example = false; $("exampleTag").hidden = true;
   changed();
 });
+$("flights").addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.dataset && e.target.dataset.f === "flightNo") { const c = e.target.closest(".flight"); if (c) lookupFlight(+c.dataset.id); }
+});
 $("flights").addEventListener("click", e => {
+  const lk = e.target.dataset && e.target.dataset.lookup; if (lk) { lookupFlight(+lk); return; }
   const id = e.target.dataset && e.target.dataset.del; if (!id) return;
   state.flights = state.flights.filter(f => f.id !== +id); state.example = false;
   renderFlights(); changed();
@@ -481,11 +506,91 @@ $("addFlight").addEventListener("click", () => {
   const last = state.flights[state.flights.length - 1];
   const base = last ? addDays(last.arrDate, 2) : addDays(state.s.start, 1);
   const tz = last ? last.arrTz : state.s.homeTz;
-  state.flights.push({ id: uid++, label: "", depDate: base, depTime: "07:00", depTz: tz, arrDate: base, arrTime: "10:00", arrTz: tz === state.s.homeTz ? tz : state.s.homeTz, buffer: 180 });
+  state.flights.push({ id: uid++, label: "", flightNo: "", depDate: base, depTime: "07:00", depTz: tz, arrDate: base, arrTime: "10:00", arrTz: tz === state.s.homeTz ? tz : state.s.homeTz, buffer: 180 });
   state.example = false; renderFlights(); changed();
   const cards = $("flights").querySelectorAll(".flight"); const c = cards[cards.length - 1]; if (c) c.querySelector("input").focus();
 });
 $("clearFlights").addEventListener("click", () => { state.flights = []; state.example = false; renderFlights(); changed(); });
+
+/* ---------- flight-number lookup ---------- */
+// Inside Claude the page can't reach flight-data sites, so it asks Claude for the published schedule.
+// Opened as a standalone file, it calls AeroDataBox live with the viewer's own key.
+const inClaude = !!window.claude;
+let sampleFn = null;
+if (inClaude) { try { window.claude.use("sample").then(s => { sampleFn = s; }, () => {}); } catch (e) {} }
+$("apiKeyBox").hidden = inClaude;
+const pad2 = n => String(n).padStart(2, "0");
+function normNo(s) { return String(s || "").toUpperCase().replace(/\s+/g, ""); }
+function splitStamp(s) { const m = /(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(s || ""); return m ? { date: m[1], time: m[2] } : null; }
+async function lookupAero(num, date) {
+  const key = (state.s.apiKey || "").trim();
+  if (!key) throw { cls: "bad", msg: "Add your free AeroDataBox key under \"How the plan adjusts\" to look up flights, or enter the times below." };
+  let r;
+  try {
+    r = await fetch(`https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(num)}/${date}?withAircraftImage=false&withLocation=false`,
+      { headers: { "X-RapidAPI-Key": key, "X-RapidAPI-Host": "aerodatabox.p.rapidapi.com" } });
+  } catch (e) { throw { cls: "bad", msg: "Couldn't reach the flight-data service. Check your connection, or enter the times below." }; }
+  if (r.status === 204 || r.status === 404) throw { cls: "bad", msg: `No flight ${num} found on ${date}. Check the number and date.` };
+  if (r.status === 401 || r.status === 403) throw { cls: "bad", msg: "The lookup key was refused. Check it, and that you've subscribed to AeroDataBox on RapidAPI." };
+  if (r.status === 429) throw { cls: "bad", msg: "Lookup limit reached for now. Try again later or enter the times below." };
+  if (!r.ok) throw { cls: "bad", msg: `The flight-data service returned an error (${r.status}). Enter the times below.` };
+  const data = await r.json().catch(() => null);
+  const list = (Array.isArray(data) ? data : data ? [data] : []).filter(x => x && x.departure && x.arrival);
+  const legs = list.map(x => {
+    const dp = x.departure, ar = x.arrival;
+    const ds = splitStamp((dp.scheduledTime && dp.scheduledTime.local) || dp.scheduledTimeLocal || (dp.revisedTime && dp.revisedTime.local));
+    const as = splitStamp((ar.scheduledTime && ar.scheduledTime.local) || ar.scheduledTimeLocal || (ar.revisedTime && ar.revisedTime.local) || (ar.predictedTime && ar.predictedTime.local));
+    return { ds, as, depTz: dp.airport && dp.airport.timeZone, arrTz: ar.airport && ar.airport.timeZone, from: dp.airport && (dp.airport.iata || dp.airport.icao), to: ar.airport && (ar.airport.iata || ar.airport.icao) };
+  }).filter(l => l.ds && l.as && validTz(l.depTz) && validTz(l.arrTz));
+  if (!legs.length) throw { cls: "bad", msg: `Found ${num}, but without full schedule times. Enter the times below.` };
+  const leg = legs.find(l => l.ds.date === date) || legs[0];
+  return { depDate: leg.ds.date, depTime: leg.ds.time, depTz: leg.depTz, arrDate: leg.as.date, arrTime: leg.as.time, arrTz: leg.arrTz,
+    label: `${num} ${leg.from || ""} → ${leg.to || ""}`.trim(), cls: "ok",
+    msg: `Filled from the live schedule: ${leg.from} ${leg.ds.time} → ${leg.to} ${leg.as.time}${legs.length > 1 ? ` (first of ${legs.length} legs; edit if you're on another)` : ""}.` };
+}
+async function lookupClaude(num, date) {
+  if (!sampleFn) throw { cls: "bad", msg: "Flight lookup isn't available in this view. Enter the times below." };
+  const wd = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date(date + "T12:00:00Z").getUTCDay()];
+  const prompt = `A travel sleep planner needs the usual published schedule of airline flight ${num} departing on ${wd} ${date}.
+Reply with only this JSON object:
+{"found": true, "from": "departure airport IATA code", "to": "arrival airport IATA code", "depTime": "HH:MM", "depTz": "IANA time zone of the departure airport", "arrTime": "HH:MM", "arrDayOffset": 0, "arrTz": "IANA time zone of the arrival airport", "confidence": "high" | "medium" | "low"}
+Times are local at each airport in 24-hour format. arrDayOffset is how many calendar days after the departure date the flight lands (-1, 0, 1 or 2).
+If you do not reliably know this flight number's route and times, reply {"found": false}. Never invent a route.`;
+  let d;
+  try { d = await sampleFn.json(prompt, { modelTier: "default", cache: { gcTime: 3600000 } }); }
+  catch (e) {
+    if (e && (e.code === "not_granted" || e.code === "sampling_disabled")) throw { cls: "bad", msg: "Lookup needs permission to ask Claude. Enter the times below instead." };
+    if (e && e.code === "rate_limited") throw { cls: "bad", msg: "Too many lookups just now. Try again in a minute." };
+    throw { cls: "bad", msg: "The lookup didn't come back. Try again, or enter the times below." };
+  }
+  const tm = /^\d{2}:\d{2}$/;
+  if (!d || !d.found || !tm.test(d.depTime || "") || !tm.test(d.arrTime || "") || !validTz(d.depTz) || !validTz(d.arrTz))
+    throw { cls: "bad", msg: `Couldn't find a reliable schedule for ${num}. Enter the times from your booking below.` };
+  const off = clamp(Math.round(+d.arrDayOffset || 0), -1, 2);
+  const conf = ["high", "medium", "low"].includes(d.confidence) ? d.confidence : "low";
+  return { depDate: date, depTime: d.depTime, depTz: d.depTz, arrDate: addDays(date, off), arrTime: d.arrTime, arrTz: d.arrTz,
+    label: `${num} ${d.from || ""} → ${d.to || ""}`.trim(), cls: "est",
+    msg: `Usual schedule for ${num} (${conf} confidence): ${d.from} ${d.depTime} → ${d.to} ${d.arrTime}. Schedules change, so check these times against your booking.` };
+}
+async function lookupFlight(id) {
+  const f = state.flights.find(x => x.id === id); if (!f) return;
+  const card = $("flights").querySelector(`.flight[data-id="${id}"]`);
+  const st = card && card.querySelector("[data-lkstatus]");
+  const btn = card && card.querySelector("[data-lookup]");
+  const num = normNo(f.flightNo);
+  const show = (cls, msg) => { f._lk = { cls, msg }; if (st) { st.className = "lookup-status " + cls; st.textContent = msg; } };
+  if (!/^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$/.test(num)) { show("bad", "Enter a flight number like BA117 or UA 901."); return; }
+  if (!f.depDate) { show("bad", "Pick the departure date first."); return; }
+  show("busy", `Looking up ${num}…`); if (btn) btn.disabled = true;
+  try {
+    const r = inClaude ? await lookupClaude(num, f.depDate) : await lookupAero(num, f.depDate);
+    Object.assign(f, { flightNo: num, depDate: r.depDate, depTime: r.depTime, depTz: r.depTz, arrDate: r.arrDate, arrTime: r.arrTime, arrTz: r.arrTz, label: r.label });
+    f._lk = { cls: r.cls, msg: r.msg };
+    state.example = false; renderFlights(); changed();
+  } catch (e) {
+    show(e && e.cls ? e.cls : "bad", e && e.msg ? e.msg : "Lookup failed. Enter the times below.");
+  } finally { if (btn && btn.isConnected) btn.disabled = false; }
+}
 
 /* ---------- output ---------- */
 let plan = null;
